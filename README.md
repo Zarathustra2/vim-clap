@@ -1,6 +1,6 @@
 # vim-clap
 
-![](https://github.com/liuchengxu/vim-clap/workflows/.github/workflows/ci.yml/badge.svg)
+<!-- ![](https://github.com/liuchengxu/vim-clap/workflows/.github/workflows/ci.yml/badge.svg) -->
 [![Build Status](https://travis-ci.com/liuchengxu/vim-clap.svg?branch=master)](https://travis-ci.com/liuchengxu/vim-clap)
 [![Gitter][G1]][G2]
 
@@ -22,7 +22,7 @@ Vim-clap is a modern generic interactive finder and dispatcher, based on the new
 * [Usage](#usage)
   * [Commands](#commands)
   * [Global variables](#global-variables)
-  * [Movement](#movement)
+  * [Keybindings](#keybindings)
   * [Execute some code during the process](#execute-some-code-during-the-process)
   * [Change highlights](#change-highlights)
 * [How to add a new provider](#how-to-add-a-new-provider)
@@ -91,6 +91,7 @@ Command                                | List                               | Re
 `Clap gfiles` or `Clap git_files`      | Files managed by git               | **[git][git]**
 `Clap grep`**<sup>+</sup>**            | Grep on the fly                    | **[rg][rg]**
 `Clap jumps`                           | Jumps                              | _none_
+`Clap lines`                           | Lines in the loaded buffers        | _none_
 `Clap marks`                           | Marks                              | _none_
 `Clap tags`                            | Tags in the current buffer         | **[vista.vim][vista.vim]**
 `Clap windows` **<sup>!</sup>**        | Windows                            | _none_
@@ -136,7 +137,9 @@ The option naming convention for provider is `g:clap_provider_{provider_id}_{opt
 
 - `g:clap_provider_grep_blink`: [2, 100] by default, blink 2 times with 100ms timeout when jumping the result. Set it to [0, 0] to disable the blink.
 
-### Movement
+See `:help clap-options` for more information.
+
+### Keybindings
 
 - [x] Use <kbd>Ctrl-j</kbd>/<kbd>Down</kbd> or <kbd>Ctrl-k</kbd>/<kbd>Up</kbd> to navigate the result list up and down.
 - [x] Use <kbd>Ctrl-a</kbd>/<kbd>Home</kbd> to go to the start of the input.
@@ -149,6 +152,8 @@ The option naming convention for provider is `g:clap_provider_{provider_id}_{opt
 - [x] Use <kbd>Enter</kbd> to select the entry and exit.
 - [x] Use <kbd>Tab</kbd> to select multiple entries and open them using the quickfix window.(Need the provider has `sink*` support)
 - [x] Use <kbd>Ctrl-t</kbd> or <kbd>Ctrl-x</kbd>, <kbd>Ctrl-v</kbd> to open the selected entry in a new tab or a new split.
+
+See `:help clap-keybindings` for more information.
 
 ### Execute some code during the process
 
@@ -192,6 +197,8 @@ Or:
 ```vim
 hi ClapMatches cterm=bold ctermfg=170 gui=bold guifg=#bc6ec5
 ```
+
+See `:help clap-highlights` for more information.
 
 ## How to add a new provider
 
@@ -237,6 +244,7 @@ Field                 | Type                | Required      | Has default implem
 `on_enter`            | Funcref             | optional      | No
 `on_exit`             | Funcref             | optional      | No
 `support_open_action` | Bool                | optional      | **Yes** if the `sink` is `e`/`edit`/`edit!`
+`enable_rooter`       | Bool                | Optional      | No
 
 - `sink`:
   - String: vim command to handle the selected entry.
@@ -261,6 +269,8 @@ Field                 | Type                | Required      | Has default implem
 
 - `on_exit`: can be used for restoring the state on start.
 
+- `enable_rooter`: try to run the `source` from the project root.
+
 You have to provide `sink` and `source` option. The `source` field is indispensable for a synchoronous provider. In another word, if you provide the `source` option this provider will be seen as a sync one, which means you could use the default `on_typed` implementation of vim-clap.
 
 ### Create pure async provider
@@ -274,6 +284,7 @@ Field                 | Type    | Required      | Has default implementation
 `converter`           | funcref | optional      | No
 `jobstop`             | funcref | **mandatory** | **Yes** if you use `clap#dispatcher#job_start(cmd)`
 `support_open_action` | Bool    | optional      | **Yes** if the `sink` is `e`/`edit`/`edit!`
+`enable_rooter`       | Bool    | Optional      | No
 
 - `on_typed`: reference to function to spawn an async job.
 - `converter`: reference to function to convert the raw output of job to another form, e.g., prepend an icon to the grep result, see [clap/provider/grep.vim](autoload/clap/provider/grep.vim).

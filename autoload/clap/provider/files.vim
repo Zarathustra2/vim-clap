@@ -61,6 +61,8 @@ function! s:files.converter(line) abort
   return json_decoded.text
 endfunction
 
+let s:files.enable_rooter = v:true
+
 let g:clap#provider#files# = s:files
 
 let &cpo = s:save_cpo

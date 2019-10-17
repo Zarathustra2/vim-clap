@@ -7,7 +7,30 @@ set cpo&vim
 let s:job_timer = -1
 let s:dispatcher_delay = 300
 
+let s:drop_cache = get(g:, 'clap_dispatcher_drop_cache', v:true)
+
 if has('nvim')
+
+  if s:drop_cache
+    " to_cache is a List.
+    function! s:handle_cache(to_cache) abort
+      let s:droped_size += len(a:to_cache)
+    endfunction
+
+    function! s:set_matches_count() abort
+      let matches_count = s:loaded_size + s:droped_size
+      call clap#indicator#set_matches('['.matches_count.']')
+    endfunction
+  else
+    function! s:handle_cache(to_cache) abort
+      call extend(g:clap.display.cache, a:to_cache)
+    endfunction
+
+    function! s:set_matches_count() abort
+      let matches_count = s:loaded_size + len(g:clap.display.cache)
+      call clap#indicator#set_matches('['.matches_count.']')
+    endfunction
+  endif
 
   function! s:apply_append_or_cache(raw_output) abort
     let raw_output = a:raw_output
@@ -23,7 +46,7 @@ if has('nvim')
       let to_cache = raw_output[start:]
 
       " Discard?
-      call extend(g:clap.display.cache, to_cache)
+      call s:handle_cache(to_cache)
 
       " Converter
       " if s:has_converter
@@ -35,7 +58,11 @@ if has('nvim')
       let s:preload_is_complete = v:true
       let s:loaded_size = line_count + len(to_append)
     else
-      let s:loaded_size = line_count + len(raw_output)
+      if s:loaded_size == 0
+        let s:loaded_size = len(raw_output)
+      else
+        let s:loaded_size = line_count + len(raw_output)
+      endif
       if s:has_converter
         let raw_output = map(raw_output, 's:Converter(v:val)')
       endif
@@ -50,31 +77,42 @@ if has('nvim')
     endif
 
     if s:preload_is_complete
-      call extend(g:clap.display.cache, a:data)
+      call s:handle_cache(a:data)
     else
       call s:apply_append_or_cache(a:data)
     endif
 
-    let matches_count = s:loaded_size + len(g:clap.display.cache)
-
-    call clap#indicator#set_matches('['.matches_count.']')
+    call s:set_matches_count()
   endfunction
 
   function! s:on_event(job_id, data, event) abort
+    " We only process the job that was spawned last time.
+    if a:job_id != s:job_id
+      return
+    endif
+
     if a:event == 'stdout'
       if len(a:data) > 1
         " Second last is the real last one for neovim.
         call s:append_output(a:data[:-2])
       endif
     elseif a:event == 'stderr'
-      " Ignore the errors?
+      if !empty(a:data) && a:data != ['']
+        let error_info = [
+              \ 'Error occurs when dispatching the command',
+              \ 'job_id: '.a:job_id,
+              \ 'message: '.string(a:data),
+              \ 'command: '.s:executed_cmd,
+              \ ]
+        call s:abort_job(error_info)
+      endif
     else
       call s:on_exit_common()
     endif
   endfunction
 
   function! s:job_start(cmd) abort
-    let s:jobid = jobstart(a:cmd, {
+    let s:job_id = jobstart(a:cmd, {
           \ 'on_exit': function('s:on_event'),
           \ 'on_stdout': function('s:on_event'),
           \ 'on_stderr': function('s:on_event'),
@@ -82,13 +120,31 @@ if has('nvim')
   endfunction
 
   function! s:jobstop() abort
-    if exists('s:jobid')
-      silent! call jobstop(s:jobid)
-      unlet s:jobid
+    if exists('s:job_id')
+      silent! call jobstop(s:job_id)
+      unlet s:job_id
     endif
   endfunction
 
 else
+
+  if s:drop_cache
+    function! s:handle_cache(_line_to_cache) abort
+      let s:droped_size += 1
+    endfunction
+
+    function! s:matched_count_when_preload_is_complete() abort
+      return s:loaded_size + s:droped_size
+    endfunction
+  else
+    function! s:handle_cache(line_to_cache) abort
+      call add(g:clap.display.cache, a:line_to_cache)
+    endfunction
+
+    function! s:matched_count_when_preload_is_complete() abort
+      return s:loaded_size + len(g:clap.display.cache)
+    endfunction
+  endif
 
   function! s:append_output(preload) abort
     let to_append = a:preload
@@ -105,7 +161,7 @@ else
 
   function! s:update_indicator() abort
     if s:preload_is_complete
-      let matches_count = s:loaded_size + len(g:clap.display.cache)
+      let matches_count = s:matched_count_when_preload_is_complete()
     else
       let matches_count = g:clap.display.line_count()
     endif
@@ -121,31 +177,53 @@ else
     call s:update_indicator()
   endfunction
 
+  function! s:parse_job_id(job_str) abort
+    return str2nr(matchstr(a:job_str, '\d\+'))
+  endfunction
+
+  function! s:job_id_of(channel) abort
+    return s:parse_job_id(ch_getjob(a:channel))
+  endfunction
+
   function! s:out_cb(channel, message) abort
-    if s:preload_is_complete
-      call add(g:clap.display.cache, a:message)
-    else
-      call add(s:vim_output, a:message)
-      if len(s:vim_output) >= g:clap.display.preload_capacity
-        call s:append_output(s:vim_output)
+    if s:job_id_of(a:channel) == s:job_id
+      if s:preload_is_complete
+        call s:handle_cache(a:message)
+      else
+        call add(s:vim_output, a:message)
+        if len(s:vim_output) >= g:clap.display.preload_capacity
+          call s:append_output(s:vim_output)
+        endif
       endif
     endif
   endfunction
 
   function! s:err_cb(channel, message) abort
-    " call g:clap.abort(['channel: '.a:channel, 'message: '.a:message, 'cmd: '.s:executed_cmd])
+    if s:job_id_of(a:channel) == s:job_id
+      let error_info = [
+            \ 'Error occurs when dispatching the command',
+            \ 'channel: '.a:channel,
+            \ 'message: '.string(a:message),
+            \ 'command: '.s:executed_cmd,
+            \ ]
+      call s:abort_job(error_info)
+    endif
   endfunction
 
-  function! s:close_cb(_channel) abort
-    call s:post_check()
+  function! s:close_cb(channel) abort
+    if s:job_id_of(a:channel) == s:job_id
+      call s:post_check()
+    endif
   endfunction
 
-  function! s:exit_cb(_job, _exit_code) abort
-    call s:post_check()
+  function! s:exit_cb(job, _exit_code) abort
+    if s:parse_job_id(a:job) == s:job_id
+      call s:post_check()
+    endif
   endfunction
 
   function! s:job_start(cmd) abort
-    let s:jobid = job_start(['bash', '-c', a:cmd], {
+    let job = job_start(['bash', '-c', a:cmd], {
           \ 'in_io': 'null',
           \ 'err_cb': function('s:err_cb'),
           \ 'out_cb': function('s:out_cb'),
@@ -153,17 +231,23 @@ else
           \ 'close_cb': function('s:close_cb'),
           \ 'noblock': 1,
           \ })
+    let s:job_id = s:parse_job_id(string(job))
   endfunction
 
   function! s:jobstop() abort
-    if exists('s:jobid')
+    if exists('s:job_id')
       " Kill it!
-      silent! call jobstop(s:jobid, 'kill')
-      unlet s:jobid
+      silent! call jobstop(s:job_id, 'kill')
+      unlet s:job_id
     endif
   endfunction
 
 endif
+
+function! s:abort_job(error_info) abort
+  call s:jobstop()
+  call g:clap.display.set_lines(a:error_info)
+endfunction
 
 function! s:on_exit_common() abort
   if s:has_no_matches()
@@ -198,7 +282,8 @@ endfunction
 function! s:apply_job_start(_timer) abort
   call clap#util#run_from_project_root(function('s:job_start'), s:cmd)
 
-  let s:executed_cmd = strftime("%Y-%m-%d %H:%M:%S").' '.s:cmd
+  let s:executed_time = strftime("%Y-%m-%d %H:%M:%S")
+  let s:executed_cmd = s:cmd
 endfunction
 
 function! s:prepare_job_start(cmd) abort
@@ -208,6 +293,7 @@ function! s:prepare_job_start(cmd) abort
   let s:loaded_size = 0
   let g:clap.display.cache = []
   let s:preload_is_complete = v:false
+  let s:droped_size = 0
 
   let s:cmd = a:cmd
 
