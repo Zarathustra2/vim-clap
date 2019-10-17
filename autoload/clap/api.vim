@@ -365,6 +365,13 @@ function! s:init_provider() abort
     endif
   endfunction
 
+  function! s:lyre_converter(line) abort
+    let json_decoded = json_decode(a:line)
+    let g:__clap_lyre_matched[s:lyre_lnum] = json_decoded.indices
+    let s:lyre_lnum += 1
+    return json_decoded.text
+  endfunction
+
   function! provider.source_async_or_default() abort
     if has_key(self._(), 'source_async')
       return self._().source_async()
@@ -373,6 +380,14 @@ function! s:init_provider() abort
       let source_ty = type(Source)
       if source_ty == v:t_string
         let ext_filter_cmd = clap#filter#get_external_cmd_or_default()
+
+        if ext_filter_cmd =~# '^lyre'
+          let s:lyre_lnum = 0
+          let g:__clap_lyre_matched = {}
+          let Provider = self._()
+          let Provider.converter = function('s:lyre_converter')
+        endif
+
         " FIXME Does it work well in Windows?
         let cmd = Source.' | '.ext_filter_cmd
         return cmd

@@ -259,16 +259,13 @@ function! s:on_exit_common() abort
   endif
   call clap#spinner#set_idle()
 
-  for [lnum, indices] in items(g:to_match)
-    for idx in indices
-      call nvim_buf_add_highlight(g:clap.display.bufnr, -1, 'Search', str2nr(lnum), idx, idx+1)
+  if !empty(get(g:, '__clap_lyre_matched', {}))
+    for [lnum, indices] in items(g:__clap_lyre_matched)
+      for idx in indices
+        call clap#util#add_highlight_at(str2nr(lnum), idx)
+      endfor
     endfor
-  endfor
-
-  " for idx in json_decoded.indices
-    " echom "idx: ".idx.", line: ".(g:clap.display.line_count() - 1)
-    " call nvim_buf_add_highlight(g:clap.display.bufnr, s:ns_id, 'Search', s:lnum, idx, idx+1)
-  " endfor
+  endif
 endfunction
 
 function! s:has_no_matches() abort

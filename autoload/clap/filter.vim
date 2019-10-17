@@ -11,10 +11,12 @@ let s:default_ext_filter = v:null
 let s:ext_cmd = {}
 let s:ext_cmd.fzy = 'fzy --show-matches="%s"'
 let s:ext_cmd.fzf = 'fzf --filter="%s"'
+let s:ext_cmd.lyre = 'lyre %s'
 let s:ext_cmd.sk = 'sk --filter="%s"'
 
 " TODO support skim, skim seems to have a score at the beginning.
-for ext in ['fzy', 'fzf']
+" for ext in ['fzy', 'fzf', 'lyre']
+for ext in ['lyre', 'fzy', 'fzf']
   if executable(ext)
     let s:default_ext_filter = ext
     break

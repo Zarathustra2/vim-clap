@@ -184,6 +184,10 @@ function! clap#util#trim_leading(str) abort
   return substitute(a:str, '^\s*', '', '')
 endfunction
 
+function! clap#util#add_highlight_at(lnum, col) abort
+  call nvim_buf_add_highlight(g:clap.display.bufnr, -1, 'Search', a:lnum, a:col, a:col+1)
+endfunction
+
 " TODO: expandcmd() 8.1.1510 https://github.com/vim/vim/commit/80dad48
 function! clap#util#expand(args) abort
   if a:args == ['<cword>']
